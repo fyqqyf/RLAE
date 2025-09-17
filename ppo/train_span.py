@@ -147,17 +147,16 @@ class SpanPPOTrainer:
             return f"{question}\n\nPartial response:\n{history}"
         return question
 
-    def get_reward(
+    def generate_span(
         self,
-        question: str,
-        answer: str,
+        state_text: str,
         weights: torch.Tensor,
         span_position: int = 0,
         max_new_tokens: Optional[int] = None,
-    ) -> Tuple[float, str]:
+    ) -> str:
         data = {
-            "messages_list": [[{"role": "user", "content": question}]],
-            "max_new_tokens": max_new_tokens or self.max_new_tokens,
+            "messages_list": [[{"role": "user", "content": state_text}]],
+            "max_new_tokens": max_new_tokens or self.span_length,
             "apply_chat_template": True,
             "new_weights": weights.detach().cpu().tolist(),
             "span_mode": True,
@@ -170,18 +169,22 @@ class SpanPPOTrainer:
             response.raise_for_status()
         except Exception as exc:
             print(f"API Error: {exc}")
-            return 0.0, ""
+            return ""
 
         response_text = response.json().get("response", [""])[0]
+        return response_text
+
+    def compute_terminal_reward(self, answer: str, response_text: str) -> float:
         generated_answer = extract_last_number(response_text)
         true_answer = extract_last_number(answer)
-
         if generated_answer is not None and true_answer is not None:
-            reward = 1.0 if abs(generated_answer - true_answer) < 1e-6 else 0.0
-        else:
-            reward = 1.0 if response_text.strip() == answer.strip() else 0.0
+            return 1.0 if abs(generated_answer - true_answer) < 1e-6 else 0.0
+        return 1.0 if response_text.strip() == answer.strip() else 0.0
 
-        return reward, response_text
+    def append_history(self, history: str, continuation: str) -> str:
+        if not continuation:
+            return history
+        return f"{history}{continuation}" if history else continuation
 
     def compute_gae(
         self, rewards: torch.Tensor, values: torch.Tensor
@@ -231,14 +234,20 @@ class SpanPPOTrainer:
             step_rewards = []
             new_histories = []
             for i in range(batch_size):
-                reward, response_text = self.get_reward(
-                    questions[i],
-                    answers[i],
+                response_text = self.generate_span(
+                    state_texts[i],
                     actions[i],
                     span_position=span_pos,
                 )
-                step_rewards.append(reward)
-                new_histories.append(response_text or histories[i])
+                new_histories.append(self.append_history(histories[i], response_text))
+
+            # Use sparse terminal reward: only the final span receives task reward.
+            step_rewards = [0.0 for _ in range(batch_size)]
+            if span_pos == steps - 1:
+                step_rewards = [
+                    self.compute_terminal_reward(answers[i], new_histories[i])
+                    for i in range(batch_size)
+                ]
 
             histories = new_histories
             reward_tensor = torch.tensor(
@@ -290,7 +299,7 @@ class SpanPPOTrainer:
             nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.optimizer.step()
 
-        return rewards.mean().item()
+        return reward_traj[-1].mean().item()
 
 
 def train(

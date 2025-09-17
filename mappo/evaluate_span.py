@@ -13,6 +13,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def _json_default(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
 def evaluate_span_mappo_policy(
     model_path, span_length=8, num_agents=2, test_samples=100, batch_size=32, seed=42
 ):
@@ -165,6 +177,7 @@ def evaluate_span_mappo_policy(
             },
             f,
             indent=2,
+            default=_json_default,
         )
 
     logger.info(f"MAPPO evaluation results saved to: {output_file}")

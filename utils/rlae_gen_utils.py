@@ -623,7 +623,7 @@ def get_token_ids(tokenizer, token, special_prefix_token, byte_mapping):
     if token in byte_mapping:
         return [byte_mapping[token]]
 
-    if byte_mapping != 128:
+    if len(byte_mapping) != 128:
         prefix_tokens = [special_prefix_token, ";"]
 
         for prefix_token in prefix_tokens:

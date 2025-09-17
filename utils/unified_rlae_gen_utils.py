@@ -95,6 +95,20 @@ def generate_ensemnble_response_span(
 ):
     """Span-level ensemble generation function."""
 
+    def _apply_span_config(candidate_config):
+        if not isinstance(candidate_config, dict):
+            return
+        if "span_length" in candidate_config:
+            span_state["span_length"] = candidate_config["span_length"]
+        if "span_position" in candidate_config:
+            span_state["current_span_position"] = candidate_config["span_position"]
+        if "weights" in candidate_config:
+            if len(candidate_config["weights"]) != len(model_actors_list):
+                raise ValueError(
+                    f"Expected {len(model_actors_list)} weights, got {len(candidate_config['weights'])}."
+                )
+            span_state["current_weights"] = candidate_config["weights"]
+
     # Initialize span state
     span_state = {
         "current_span_position": 0,
@@ -107,18 +121,9 @@ def generate_ensemnble_response_span(
 
     # Parse span configuration
     if span_state["span_config"]:
-        if "span_length" in span_state["span_config"]:
-            span_state["span_length"] = span_state["span_config"]["span_length"]
-        if "span_position" in span_state["span_config"]:
-            span_state["current_span_position"] = span_state["span_config"][
-                "span_position"
-            ]
+        _apply_span_config(span_state["span_config"])
     elif weight_update_queue and not weight_update_queue.empty():
-        span_config = weight_update_queue.get()
-        if isinstance(span_config, dict) and "span_length" in span_config:
-            span_state["span_length"] = span_config["span_length"]
-            if "span_position" in span_config:
-                span_state["current_span_position"] = span_config["span_position"]
+        _apply_span_config(weight_update_queue.get())
 
     # Initialize model actors
     refs = []
@@ -129,8 +134,9 @@ def generate_ensemnble_response_span(
     ray.get(refs)
     ensemble_weight_list = ray.get(ensemble_weight_list)
 
-    # Set initial weights
-    span_state["current_weights"] = ensemble_weight_list
+    # Set initial weights. If request specifies weights, apply them in the first span.
+    if span_state["current_weights"] is None:
+        span_state["current_weights"] = ensemble_weight_list
 
     cached_output_ids = [
         [] for _ in ray.get(model_actors_list[0].get_input_ids.remote())
@@ -148,11 +154,10 @@ def generate_ensemnble_response_span(
                 and not span_state["weight_update_queue"].empty()
             ):
                 new_span_config = span_state["weight_update_queue"].get()
-                if isinstance(new_span_config, dict) and "weights" in new_span_config:
-                    span_state["current_weights"] = new_span_config["weights"]
-                    logger.info(
-                        f"Updated span weights at position {span_state['current_span_position']}: {span_state['current_weights']}"
-                    )
+                _apply_span_config(new_span_config)
+                logger.info(
+                    f"Updated span weights at position {span_state['current_span_position']}: {span_state['current_weights']}"
+                )
 
         # Apply current span weights (consistent within a span)
         weight_update_refs = [
