@@ -1,0 +1,14 @@
+accelerate
+fastapi
+natsort
+numpy
+pydantic
+PyYAML
+ray
+Requests
+safetensors
+torch
+tqdm
+transformers
+uvicorn
+bitsandbytes

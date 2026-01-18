@@ -1,0 +1,115 @@
+# Span-level PPO Training Configuration
+# Optimized for single-agent PPO with span-level weight updates
+
+# Global settings
+NORM_TYPE_API_SERVER: 'average'
+THRESHOLD_API_SERVER: 1.0
+
+# Span-level specific settings
+SPAN_LEVEL_CONFIG:
+  enabled: true
+  default_span_length: 8
+  max_span_position: 64
+  weight_update_frequency: 'span'
+  
+# PPO-specific training parameters
+PPO_TRAINING_CONFIG:
+  algorithm: 'ppo'
+  mode: 'span'
+  hyperparameters:
+    learning_rate: 1e-4
+    gamma: 0.99
+    epsilon: 0.2
+    entropy_coef: 0.01
+    batch_size: 32
+    num_epochs: 2
+    span_length: 8
+    
+  # PPO-specific settings
+  clip_range: 0.2
+  value_loss_coef: 0.5
+  max_grad_norm: 0.5
+  
+  # Early stopping
+  early_stopping:
+    enabled: true
+    patience: 5
+    min_delta: 0.001
+
+# Model ensemble configuration
+CONFIG_API_SERVER:
+  # Primary model - strong reasoning
+  - weight: 'openchat/openchat-3.5-0106'
+    max_memory:
+      0: '24GiB'
+    num_gpus: 1
+    name: 'openchat-3.5-0106'
+    score: 100
+    priority: 'supportive'
+    quantization: 'none'
+    span_config:
+      optimal_span_length: 8
+      weight_range: [0.3, 0.7]
+      stability_threshold: 0.1
+      
+  # Secondary model - mathematical reasoning
+  - weight: 'upstage/SOLAR-10.7B-Instruct-v1.0'
+    max_memory:
+      0: '40GiB'
+    num_gpus: 1
+    name: 'SOLAR-10.7B-Instruct'
+    score: 100
+    priority: 'supportive'
+    quantization: 'none'
+    span_config:
+      optimal_span_length: 8
+      weight_range: [0.3, 0.7]
+      stability_threshold: 0.1
+
+# Dataset configuration
+DATASET_CONFIG:
+  name: 'gsm8k'
+  split: 'train'
+  max_samples: null  # null means use all samples
+  preprocessing:
+    max_length: 512
+    truncation: true
+    padding: true
+
+# Evaluation configuration
+EVALUATION_CONFIG:
+  metrics:
+    - accuracy
+    - weight_stability
+    - span_efficiency
+    - convergence_speed
+    
+  test_splits:
+    - 'test'
+    - 'validation'
+    
+  span_lengths_to_test: [4, 8, 16, 32]
+  
+# Logging and monitoring
+LOGGING_CONFIG:
+  level: 'INFO'
+  log_span_transitions: true
+  log_weight_distributions: true
+  log_training_metrics: true
+  
+  checkpoints:
+    save_every: 1  # epochs
+    keep_last: 3
+    
+  # Weights & Biases
+  wandb:
+    enabled: false
+    project: 'ppo-span-ensemble'
+    name: 'ppo-span-experiment'
+    
+# Hardware configuration
+HARDWARE_CONFIG:
+  mixed_precision: true
+  gradient_accumulation_steps: 1
+  dataloader_num_workers: 4
+  pin_memory: true

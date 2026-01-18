@@ -1,0 +1,156 @@
+# Span-level Ensemble Configuration
+# This configuration is optimized for span-level ensemble training and inference
+# Key features:
+# - Fixed span lengths for stable weight updates
+# - Support for both PPO and MAPPO algorithms
+# - Optimized memory allocation for span-level processing
+# - Flexible model combinations for different scenarios
+
+# Global ensemble settings
+NORM_TYPE_API_SERVER: 'average'  # 'average' or 'score'
+THRESHOLD_API_SERVER: 1.0        # Threshold for ensemble decisions
+
+# Span-level specific configurations
+SPAN_LEVEL_CONFIG:
+  enabled: true                    # Enable span-level mode
+  default_span_length: 8          # Default span length (tokens)
+  max_span_position: 128          # Maximum span positions to track
+  weight_update_frequency: 'span' # 'span' or 'token'
+  
+  # Span length presets for different scenarios
+  span_presets:
+    short_text: 4                 # For short texts (< 50 tokens)
+    medium_text: 8                # For medium texts (50-200 tokens)  
+    long_text: 16                 # For long texts (> 200 tokens)
+    dynamic: 'adaptive'           # Adaptive based on content
+
+# Training configurations
+TRAINING_CONFIG:
+  ppo_span:
+    algorithm: 'ppo'
+    mode: 'span'
+    default_params:
+      span_length: 8
+      batch_size: 32
+      num_epochs: 2
+      learning_rate: 1e-4
+      entropy_coef: 0.01
+      
+  mappo_span:
+    algorithm: 'mappo' 
+    mode: 'span'
+    default_params:
+      span_length: 8
+      num_agents: 2
+      batch_size: 16
+      num_epochs: 2
+      learning_rate: 1e-4
+      entropy_coef: 0.01
+
+# Model configurations for span-level ensemble
+CONFIG_API_SERVER:
+  # Configuration 1: Balanced duo for general tasks
+  - weight: 'openchat/openchat-3.5-0106'
+    max_memory:
+      0: '24GiB'
+    num_gpus: 1
+    name: 'openchat-3.5-0106'
+    score: 100
+    priority: 'supportive'
+    quantization: 'none'
+    span_config:
+      optimal_span_length: 8
+      weight_stability_threshold: 0.1
+      
+  - weight: 'upstage/SOLAR-10.7B-Instruct-v1.0'
+    max_memory:
+      0: '40GiB'
+    num_gpus: 1
+    name: 'SOLAR-10.7B-Instruct'
+    score: 100
+    priority: 'supportive'
+    quantization: 'none'
+    span_config:
+      optimal_span_length: 8
+      weight_stability_threshold: 0.1
+
+  # Configuration 2: Multi-size ensemble for diverse tasks
+  - weight: 'mistralai/Mistral-7B-Instruct-v0.2'
+    max_memory:
+      0: '24GiB'
+    num_gpus: 0.5
+    name: 'Mistral-7B-Instruct'
+    score: 90
+    priority: 'supportive'
+    quantization: 'none'
+    span_config:
+      optimal_span_length: 6
+      weight_stability_threshold: 0.15
+      
+  - weight: 'meta-llama/Meta-Llama-3-8B-Instruct'
+    max_memory:
+      0: '24GiB'
+    num_gpus: 0.5
+    name: 'Llama-3-8B-Instruct'
+    score: 95
+    priority: 'supportive'
+    quantization: 'none'
+    span_config:
+      optimal_span_length: 8
+      weight_stability_threshold: 0.12
+      
+# Evaluation configurations
+EVALUATION_CONFIG:
+  metrics:
+    - weight_stability      # Measure weight changes across spans
+    - ensemble_diversity    # Measure diversity in model outputs
+    - span_efficiency      # Measure computational efficiency
+    - convergence_speed    # Measure training convergence
+    
+  test_scenarios:
+    - name: "short_text"
+      description: "Short text generation (< 50 tokens)"
+      span_length: 4
+      test_samples: 100
+      
+    - name: "medium_text"
+      description: "Medium text generation (50-200 tokens)"
+      span_length: 8
+      test_samples: 100
+      
+    - name: "long_text"
+      description: "Long text generation (> 200 tokens)"
+      span_length: 16
+      test_samples: 50
+
+# Performance optimization
+PERFORMANCE_CONFIG:
+  # Memory optimization
+  enable_gradient_checkpointing: true
+  use_flash_attention: true
+  
+  # Speed optimization
+  compile_model: false          # Set to true if using PyTorch 2.0+
+  use_cache: true
+  
+  # Distributed training
+  data_parallel: false
+  model_parallel: true
+  
+# Logging and monitoring
+LOGGING_CONFIG:
+  level: "INFO"
+  log_span_transitions: true
+  log_weight_updates: true
+  log_generation_metrics: true
+  
+  # Weights & Biases integration
+  wandb:
+    enabled: false
+    project: "span-ensemble-rlae"
+    entity: null  # Set to your W&B entity
+    
+  # TensorBoard integration
+  tensorboard:
+    enabled: true
+    log_dir: "./logs"
